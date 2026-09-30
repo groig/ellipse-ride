@@ -76,7 +76,7 @@ class BRouterSession private constructor(
             var connection: ServiceConnection? = null
             return try {
                 withTimeout(10_000) {
-                    suspendCancellableCoroutine { cont ->
+                    suspendCancellableCoroutine<BRouterSession> { cont ->
                         val conn = object : ServiceConnection {
                             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
                                 if (cont.isActive) {

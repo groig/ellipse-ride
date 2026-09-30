@@ -2,6 +2,7 @@ package dev.groig.routing
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.location.Location
 import android.location.LocationManager
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
@@ -18,7 +19,7 @@ suspend fun currentLocation(context: Context): LatLon? {
         .firstOrNull { lm.isProviderEnabled(it) }
     val fresh = provider?.let {
         withTimeoutOrNull(15_000) {
-            suspendCancellableCoroutine { cont ->
+            suspendCancellableCoroutine<Location?> { cont ->
                 val signal = CancellationSignal()
                 cont.invokeOnCancellation { signal.cancel() }
                 LocationManagerCompat.getCurrentLocation(
