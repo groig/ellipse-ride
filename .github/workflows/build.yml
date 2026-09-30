@@ -1,4 +1,4 @@
-name: Build debug APK
+name: Build APKs
 
 on:
   push:
@@ -18,8 +18,29 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No release keystore secret; the release APK will be signed with the debug key."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "RELEASE_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
       - name: Build
-        run: ./gradlew --no-daemon assembleDebug
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon assembleDebug assembleRelease
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ellipse-ride-release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:

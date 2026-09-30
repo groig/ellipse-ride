@@ -30,11 +30,29 @@ For loops, the ellipse becomes a circle that passes through A.
 ## Building
 
 ```sh
-./gradlew assembleDebug
+./gradlew assembleRelease   # or assembleDebug
 ```
 
-The APK lands in `app/build/outputs/apk/debug/`. Every push runs the same build on GitHub Actions and
-uploads the APK as the `ellipse-ride-debug` artifact.
+APKs land in `app/build/outputs/apk/<type>/`. Every push runs both builds on GitHub Actions and
+uploads them as the `ellipse-ride-release` and `ellipse-ride-debug` artifacts.
+
+The release build is minified with R8. To sign it with your own key, create a keystore:
+
+```sh
+keytool -genkeypair -v -keystore release.jks -alias ellipse-ride \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
+then add these repository secrets under Settings > Secrets and variables > Actions:
+
+- `RELEASE_KEYSTORE_BASE64`: output of `base64 -w0 release.jks`
+- `RELEASE_KEYSTORE_PASSWORD`
+- `RELEASE_KEY_ALIAS` (`ellipse-ride` above)
+- `RELEASE_KEY_PASSWORD`
+
+Locally, set the same variables, with `RELEASE_KEYSTORE` pointing at the `.jks` file. Without them
+the release APK is signed with the debug key: it installs fine, but Android won't let you update it
+in place with a build signed by a different key later.
 
 `app/src/main/aidl/btools/routingapp/IBRouterService.aidl` is copied verbatim from the BRouter
 repository; keep its package name, since that is what the service binder expects.

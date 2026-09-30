@@ -16,9 +16,26 @@ android {
         versionName = "0.1.0"
     }
 
+    // Release signing comes from the environment (see README). Without it the
+    // release APK is signed with the debug key so it still installs.
+    val releaseKeystore = System.getenv("RELEASE_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
