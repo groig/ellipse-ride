@@ -12,8 +12,10 @@ android {
         applicationId = "dev.groig.routing"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Release builds get these from the git tag (see release.yml). Android only
+        // updates an app in place when the new versionCode is higher.
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("VERSION_NAME") ?: "0.0.0-dev"
     }
 
     // Release signing comes from the environment (see README). Without it the
