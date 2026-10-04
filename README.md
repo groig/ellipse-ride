@@ -20,10 +20,10 @@ OpenStreetMap data, so it works without a connection once BRouter has its maps.
 ## Install
 
 Download the latest `ellipse-ride-vX.Y.Z.apk` from the
-[Releases page](https://github.com/groig/routing/releases/latest) and open it on your phone. Android
+[Releases page](https://github.com/groig/ellipse-ride/releases/latest) and open it on your phone. Android
 will ask you to allow installing apps from your browser or file manager the first time.
 
-To hear about new versions, add `https://github.com/groig/routing` to
+To hear about new versions, add `https://github.com/groig/ellipse-ride` to
 [Obtainium](https://github.com/ImranR98/Obtainium). It checks the Releases page and offers updates,
 which install over the old version and keep your saved places.
 
