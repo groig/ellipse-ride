@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -180,6 +183,15 @@ fun MainScreen(vm: MainViewModel) {
     }
 
     Scaffold(
+        // An opaque strip behind the status bar, so the list doesn't scroll under the clock.
+        topBar = {
+            Spacer(
+                Modifier
+                    .fillMaxWidth()
+                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                    .background(MaterialTheme.colorScheme.background),
+            )
+        },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             GenerateBar(

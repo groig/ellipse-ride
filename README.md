@@ -5,6 +5,13 @@ finish (or the same place for a loop), choose how far you want to ride, and it f
 about that distance, within 5%. Every tap gives you a different ride. When you like one, send it to
 [OsmAnd](https://osmand.net) to navigate it.
 
+<p align="center">
+  <img src="docs/screenshots/route.jpg" width="200" alt="A 15 km ride through Havana drawn on the map, with its distance, climb and buttons to open it in OsmAnd">
+  <img src="docs/screenshots/home.jpg" width="200" alt="The main screen with start, finish and a 40 km distance slider">
+  <img src="docs/screenshots/map-picker.jpg" width="200" alt="Picking the start on a map by moving it under a pin">
+  <img src="docs/screenshots/places.jpg" width="200" alt="The sheet for choosing a start: on the map, current location, coordinates or saved places">
+</p>
+
 The routing is done on your phone by [BRouter](https://github.com/abrensch/brouter), using
 OpenStreetMap data, so it works without a connection once BRouter has its maps.
 
