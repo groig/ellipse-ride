@@ -1,9 +1,15 @@
 name: Release
 
-# Push a tag like v1.2.3 to build a signed APK and publish it as a GitHub release.
+# Push a tag like v1.2.3, or run this workflow from the Actions tab with a
+# version number, to build a signed APK and publish it as a GitHub release.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, like 1.2.3 (tagged v1.2.3)"
+        required: true
 
 permissions:
   contents: write
@@ -21,9 +27,15 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Work out the version from the tag
+      - name: Work out the version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          tag="${GITHUB_REF_NAME}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="v${INPUT_VERSION#v}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
           if [[ ! "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
             echo "::error::Tag $tag must look like v1.2.3"
             exit 1
@@ -33,6 +45,7 @@ jobs:
             echo "::error::Minor and patch versions must be below 100"
             exit 1
           fi
+          echo "TAG=${tag}" >> "$GITHUB_ENV"
           echo "VERSION_NAME=${major}.${minor}.${patch}" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$(( major * 10000 + minor * 100 + patch ))" >> "$GITHUB_ENV"
 
@@ -55,12 +68,14 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           ./gradlew --no-daemon testDebugUnitTest assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk "ellipse-ride-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "ellipse-ride-${TAG}.apk"
 
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "ellipse-ride-${GITHUB_REF_NAME}.apk" \
-            --title "Ellipse Ride ${GITHUB_REF_NAME}" \
+          # Creates the tag on this commit when it doesn't exist yet.
+          gh release create "$TAG" "ellipse-ride-${TAG}.apk" \
+            --target "$GITHUB_SHA" \
+            --title "Ellipse Ride ${TAG}" \
             --generate-notes

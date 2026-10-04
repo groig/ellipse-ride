@@ -80,7 +80,8 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-`release.yml` builds and tests that commit, signs the APK and publishes it as a GitHub release
+Or open the Actions tab, pick "Release", click "Run workflow" and enter the version (`0.2.0`); the
+tag is created for you. Either way, `release.yml` builds and tests that commit, signs the APK and publishes it as a GitHub release
 with notes generated from the commits. Anyone can download it from the repository's Releases page
 without a GitHub account. Each tag must be higher than the last (the version code is
 `major * 10000 + minor * 100 + patch`).
