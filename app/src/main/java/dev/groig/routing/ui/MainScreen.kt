@@ -115,17 +115,21 @@ fun MainScreen(vm: MainViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    var sheetFor by remember { mutableStateOf<Slot?>(null) }
     var editing by remember { mutableStateOf<Slot?>(null) }
-    var locating by remember { mutableStateOf<Slot?>(null) }
-    var pendingLocate by remember { mutableStateOf<Slot?>(null) }
+    var picking by remember { mutableStateOf<Slot?>(null) }
+    var locating by remember { mutableStateOf(false) }
+    var locatingSlot by remember { mutableStateOf<Slot?>(null) }
+    var pendingLocate by remember { mutableStateOf<((LatLon) -> Unit)?>(null) }
 
-    fun locate(slot: Slot) {
+    fun locate(onFound: (LatLon) -> Unit) {
         scope.launch {
-            locating = slot
+            locating = true
             val here = currentLocation(context)
-            locating = null
+            locating = false
+            locatingSlot = null
             if (here != null) {
-                vm.setPoint(slot, here, "My location")
+                onFound(here)
             } else {
                 snackbar.showSnackbar("Couldn't get a location fix. Is location turned on?")
             }
@@ -135,22 +139,44 @@ fun MainScreen(vm: MainViewModel) {
     val permissions = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { granted ->
-        val slot = pendingLocate
+        val onFound = pendingLocate
         pendingLocate = null
-        if (slot != null && granted.values.any { it }) locate(slot)
+        if (onFound != null && granted.values.any { it }) locate(onFound) else locatingSlot = null
     }
 
-    fun requestLocate(slot: Slot) {
+    fun requestLocate(onFound: (LatLon) -> Unit) {
         val granted = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             .any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
         if (granted) {
-            locate(slot)
+            locate(onFound)
         } else {
-            pendingLocate = slot
+            pendingLocate = onFound
             permissions.launch(
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
             )
         }
+    }
+
+    fun locateInto(slot: Slot) {
+        locatingSlot = slot
+        requestLocate { here -> vm.setPoint(slot, here, "My location") }
+    }
+
+    picking?.let { slot ->
+        val current = if (slot == Slot.A) state.pointA else state.pointB
+        val other = if (slot == Slot.A) state.pointB else state.pointA
+        MapPicker(
+            slot = slot,
+            start = current?.position ?: other?.position ?: state.places.firstOrNull()?.position,
+            onLocate = ::requestLocate,
+            locating = locating,
+            onCancel = { picking = null },
+            onPick = { position, name ->
+                vm.setPoint(slot, position, name.ifBlank { "Picked on the map" }, remember = name.isNotBlank())
+                picking = null
+            },
+        )
+        return
     }
 
     Scaffold(
@@ -180,9 +206,9 @@ fun MainScreen(vm: MainViewModel) {
                 PointsCard(
                     a = state.pointA,
                     b = state.pointB,
-                    locating = locating,
-                    onEdit = { editing = it },
-                    onLocate = ::requestLocate,
+                    locating = locatingSlot,
+                    onEdit = { sheetFor = it },
+                    onLocate = ::locateInto,
                     onSwap = vm::swap,
                 )
             }
@@ -225,9 +251,36 @@ fun MainScreen(vm: MainViewModel) {
             initial = if (slot == Slot.A) state.pointA else state.pointB,
             onDismiss = { editing = null },
             onSave = { position, label ->
-                vm.setPoint(slot, position, label)
+                vm.setPoint(slot, position, label, remember = true)
                 editing = null
             },
+        )
+    }
+
+    sheetFor?.let { slot ->
+        PointSheet(
+            slot = slot,
+            places = state.places,
+            other = (if (slot == Slot.A) state.pointB else state.pointA)?.position,
+            locating = locatingSlot == slot,
+            onDismiss = { sheetFor = null },
+            onMap = {
+                sheetFor = null
+                picking = slot
+            },
+            onLocate = {
+                sheetFor = null
+                locateInto(slot)
+            },
+            onCoordinates = {
+                sheetFor = null
+                editing = slot
+            },
+            onPlace = { place ->
+                vm.usePlace(slot, place)
+                sheetFor = null
+            },
+            onDelete = vm::deletePlace,
         )
     }
 
@@ -393,7 +446,7 @@ private fun PointRow(
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                point?.position?.format() ?: "Tap to enter coordinates",
+                point?.position?.format() ?: "Tap to choose a place",
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = if (point != null) FontFamily.Monospace else FontFamily.Default,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -518,7 +571,8 @@ private fun PassRow(pass: Pass) {
         val length = pass.lengthMeters
         if (length != null) {
             Text(
-                "%.1f km".format(length / 1000),
+                "%.1f km".format(length / 1000) +
+                    (pass.overlap?.let { "  ·  %.0f%% repeated".format(it * 100) } ?: ""),
                 style = MaterialTheme.typography.bodyMedium,
                 fontFamily = FontFamily.Monospace,
             )
@@ -565,14 +619,11 @@ private fun RouteCard(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shape = RoundedCornerShape(20.dp),
             ) {
-                RoutePreview(
-                    track = route.track,
-                    vias = route.vias,
-                    start = route.start,
-                    end = route.end,
+                RouteMap(
+                    route = route,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(260.dp),
+                        .height(320.dp),
                 )
             }
             Spacer(Modifier.height(16.dp))
@@ -586,7 +637,26 @@ private fun RouteCard(
                     highlight = if (route.withinTolerance) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                 )
                 Stat("Climb", route.ascendMeters?.let { "$it m" } ?: "–", Modifier.weight(1f))
-                Stat("Passes", route.passes.toString(), Modifier.weight(1f))
+                Stat(
+                    "Repeated",
+                    "%.0f%%".format(route.overlap * 100),
+                    Modifier.weight(1f),
+                    highlight = if (route.overlap > 0.15) MaterialTheme.colorScheme.tertiary else null,
+                )
+            }
+            val notes = buildList<String> {
+                if (route.trimmedMeters >= 50) {
+                    add("Cut %.1f km of dead-end detours from BRouter's track.".format(route.trimmedMeters / 1000))
+                }
+                if (route.withinTolerance) add("Found in ${route.passes} routing passes.")
+            }
+            if (notes.isNotEmpty()) {
+                Text(
+                    notes.joinToString(" "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 12.dp),
+                )
             }
             if (!route.withinTolerance) {
                 Text(
@@ -698,8 +768,9 @@ private fun PointDialog(
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
-                    label = { Text("Name") },
+                    label = { Text("Name (optional)") },
                     placeholder = { Text("Home") },
+                    supportingText = { Text("Named places are saved for next time") },
                     singleLine = true,
                 )
                 OutlinedTextField(

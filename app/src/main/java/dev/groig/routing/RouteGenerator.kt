@@ -7,21 +7,38 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-data class Pass(val attempt: Int, val pass: Int, val lengthMeters: Double?, val error: String? = null)
+data class Pass(
+    val attempt: Int,
+    val pass: Int,
+    val lengthMeters: Double?,
+    val error: String? = null,
+    val overlap: Double? = null,
+)
 
 data class GeneratedRoute(
-    val gpx: String,
     val start: LatLon,
     val end: LatLon,
-    val track: List<LatLon>,
+    val track: List<TrackPoint>,
     val vias: List<LatLon>,
     val lengthMeters: Double,
     val ascendMeters: Int?,
     val targetMeters: Double,
+    /** Share of the ride on roads it already used, 0..1. */
+    val overlap: Double,
+    /** Metres of out-and-back detours cut from BRouter's track. */
+    val trimmedMeters: Double,
     val passes: Int,
 ) {
     val deviation: Double get() = (lengthMeters - targetMeters) / targetMeters
     val withinTolerance: Boolean get() = abs(deviation) <= RouteGenerator.TOLERANCE
+
+    /** Whether this route beats [other]: on target first, then fewer repeated roads. */
+    fun betterThan(other: GeneratedRoute?): Boolean = when {
+        other == null -> true
+        withinTolerance != other.withinTolerance -> withinTolerance
+        withinTolerance -> overlap < other.overlap
+        else -> abs(deviation) < abs(other.deviation)
+    }
 }
 
 /**
@@ -86,8 +103,9 @@ class RouteGenerator(
 ) {
     companion object {
         const val TOLERANCE = 0.05
-        private const val MAX_ATTEMPTS = 4
-        private const val MAX_PASSES = 8
+        private const val MAX_ATTEMPTS = 5
+        private const val MAX_PASSES = 6
+        private const val GOOD_OVERLAP = 0.05
         private const val LOOP_THRESHOLD_M = 100.0
         private const val INITIAL_ROAD_FACTOR = 1.3
     }
@@ -95,8 +113,10 @@ class RouteGenerator(
     /**
      * Picks random via points on an ellipse around [start] and [end], routes
      * through them with BRouter and rescales the ellipse until the route is
-     * within 5% of [targetMeters]. Each attempt uses fresh random via points;
-     * the closest route found is returned if none hit the tolerance.
+     * within 5% of [targetMeters]. Out-and-back detours are trimmed from every
+     * track before it is measured. Each attempt uses fresh random via points;
+     * among rides on target the one repeating the least road wins, and the
+     * closest ride is returned if none hit the tolerance.
      */
     suspend fun generate(
         start: LatLon,
@@ -115,7 +135,7 @@ class RouteGenerator(
         var roadFactor = INITIAL_ROAD_FACTOR
         var passes = 0
 
-        for (attempt in 1..MAX_ATTEMPTS) {
+        attempts@ for (attempt in 1..MAX_ATTEMPTS) {
             val shape: Shape = if (isLoop) {
                 LoopShape(a, random, random.nextInt(2, 4))
             } else {
@@ -139,27 +159,38 @@ class RouteGenerator(
                     // segments; start over with new random points.
                     lastError = e
                     onPass(Pass(attempt, pass, null, e.message))
-                    break
+                    continue@attempts
                 }
-                val parsed = parseGpx(gpx)
-                val length = parsed.lengthMeters
-                onPass(Pass(attempt, pass, length))
-
+                val raw = parseTrack(gpx)
+                if (raw.size < 2) {
+                    lastError = BRouterException("BRouter returned an empty track")
+                    continue@attempts
+                }
+                val track = trimSpurs(raw)
+                val length = trackLength(track)
                 val route = GeneratedRoute(
-                    gpx = gpx,
                     start = start,
                     end = end,
-                    track = parsed.points,
+                    track = track,
                     vias = vias.map(frame::toLatLon),
                     lengthMeters = length,
-                    ascendMeters = parsed.ascendMeters,
+                    ascendMeters = trackAscend(track),
                     targetMeters = targetMeters,
+                    overlap = overlapRatio(track),
+                    trimmedMeters = trackLength(raw) - length,
                     passes = passes,
                 )
-                if (best == null || abs(route.deviation) < abs(best.deviation)) best = route
-                if (route.withinTolerance) return route.copy(passes = passes)
+                onPass(Pass(attempt, pass, length, overlap = route.overlap))
+                if (route.betterThan(best)) best = route
 
-                if (length <= 0.0) break
+                if (route.withinTolerance) {
+                    // A clean ride is good enough; otherwise try fresh via points
+                    // and keep whichever ride repeats the least road.
+                    if (route.overlap <= GOOD_OVERLAP) return route.copy(passes = passes)
+                    continue@attempts
+                }
+
+                if (length <= 0.0) continue@attempts
                 if (crow > 0) roadFactor = (length / crow).coerceIn(1.0, 3.0)
                 // Rescale: if the ride came out 10% long, shrink the ellipse's
                 // straight-line length by 10% and route again.

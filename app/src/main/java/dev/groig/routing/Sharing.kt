@@ -13,19 +13,19 @@ import java.util.Locale
 private val OSMAND_PACKAGES = listOf("net.osmand.plus", "net.osmand")
 private const val GPX_MIME = "application/gpx+xml"
 
-private fun writeGpx(context: Context, route: GeneratedRoute): Uri {
+private fun saveGpx(context: Context, route: GeneratedRoute): Uri {
     val km = "%.1f".format(Locale.US, route.lengthMeters / 1000)
     val stamp = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())
     val dir = File(context.cacheDir, "routes").apply { mkdirs() }
     dir.listFiles()?.forEach { it.delete() }
     val file = File(dir, "ellipse-ride_${stamp}_${km}km.gpx")
-    file.writeText(renameTrack(route.gpx, "Ellipse Ride $km km"))
+    file.writeText(writeGpx(route.track, "Ellipse Ride $km km"))
     return FileProvider.getUriForFile(context, "${context.packageName}.files", file)
 }
 
 /** Opens the GPX in OsmAnd if installed; returns false if it is not. */
 fun openInOsmAnd(context: Context, route: GeneratedRoute): Boolean {
-    val uri = writeGpx(context, route)
+    val uri = saveGpx(context, route)
     for (pkg in OSMAND_PACKAGES) {
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, GPX_MIME)
@@ -42,7 +42,7 @@ fun openInOsmAnd(context: Context, route: GeneratedRoute): Boolean {
 }
 
 fun shareGpx(context: Context, route: GeneratedRoute) {
-    val uri = writeGpx(context, route)
+    val uri = saveGpx(context, route)
     val send = Intent(Intent.ACTION_SEND)
         .setType(GPX_MIME)
         .putExtra(Intent.EXTRA_STREAM, uri)

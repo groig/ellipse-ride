@@ -28,12 +28,14 @@ data class UiState(
     val route: GeneratedRoute? = null,
     val error: String? = null,
     val incomingPoint: LatLon? = null,
+    val places: List<Place> = emptyList(),
 ) {
     val canGenerate: Boolean get() = pointA != null && pointB != null && !working && brouterInstalled
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("points", Context.MODE_PRIVATE)
+    private val placeStore = PlaceStore(app)
     private val _state = MutableStateFlow(
         UiState(
             pointA = loadPoint(Slot.A),
@@ -41,6 +43,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             targetKm = prefs.getInt("target_km", 40),
             profile = Profile.entries.firstOrNull { it.name == prefs.getString("profile", null) }
                 ?: Profile.Trekking,
+            places = placeStore.load(),
         ),
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -50,7 +53,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(brouterInstalled = isBRouterInstalled(getApplication())) }
     }
 
-    fun setPoint(slot: Slot, position: LatLon, label: String) {
+    /** Sets A or B. With [remember], a named point also goes into the saved places. */
+    fun setPoint(slot: Slot, position: LatLon, label: String, remember: Boolean = false) {
+        if (remember && label.isNotBlank()) updatePlaces { it.bump(Place(label.trim(), position)) }
         val point = SavedPoint(position, label.ifBlank { if (slot == Slot.A) "Start" else "Finish" })
         prefs.edit {
             putString("${slot.name}_lat", position.lat.toString())
@@ -58,6 +63,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             putString("${slot.name}_label", point.label)
         }
         _state.update { if (slot == Slot.A) it.copy(pointA = point) else it.copy(pointB = point) }
+    }
+
+    fun usePlace(slot: Slot, place: Place) {
+        updatePlaces { it.bump(place) }
+        setPoint(slot, place.position, place.name)
+    }
+
+    fun deletePlace(place: Place) = updatePlaces { list -> list.filterNot { it == place } }
+
+    private fun updatePlaces(change: (List<Place>) -> List<Place>) {
+        val places = change(_state.value.places)
+        placeStore.save(places)
+        _state.update { it.copy(places = places) }
     }
 
     fun swap() {
