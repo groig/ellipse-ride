@@ -1,90 +1,80 @@
 # Ellipse Ride
 
-A small Android app that makes cycling routes of a chosen length between two saved points, using
-[BRouter](https://github.com/abrensch/brouter) on the phone through its `IBRouterService` AIDL
-interface, and hands the result to [OsmAnd](https://osmand.net) as GPX.
+Ellipse Ride plans bike rides of the length you ask for. Pick where you start, where you want to
+finish (or the same place for a loop), choose how far you want to ride, and it finds a route of
+about that distance, within 5%. Every tap gives you a different ride. When you like one, send it to
+[OsmAnd](https://osmand.net) to navigate it.
 
-## How it works
+The routing is done on your phone by [BRouter](https://github.com/abrensch/brouter), using
+OpenStreetMap data, so it works without a connection once BRouter has its maps.
 
-1. Tap A or B to choose a place: pick it on a map (drag until the pin sits on the spot), use your
-   current location, pick one of your saved places, or type coordinates. Give a place a name and it
-   is saved for next time. Opening a `geo:` link with the app (OsmAnd's "Share location" works)
-   also sets A or B. If A and B are the same spot you get a loop.
-2. Pick a target distance and a BRouter profile (`trekking`, `fastbike` or `safety`).
-3. The app puts random via points on an ellipse whose foci are A and B, all on one side, ordered from A
-   to B. It sizes the ellipse so the straight-line path A -> vias -> B is the target divided by a guessed
-   detour factor, then asks BRouter for the route.
-4. Random via points sometimes land at the end of a dead end, which makes BRouter ride in and straight
-   back out. Those out-and-back detours are cut from the track before it is measured.
-5. If the route is off by more than 5%, the ellipse is scaled by `target / actual` and routed again.
-   Once a route is on target, the app checks how much of it rides the same road twice. Under 5% and
-   it's done; otherwise it tries fresh via points and keeps the on-target route with the least
-   repetition.
-6. The result is drawn over OpenStreetMap tiles. "Open in OsmAnd" sends the GPX straight to OsmAnd
-   (or OsmAnd+); "Share" offers any app.
+## What you need
 
-For loops, the ellipse becomes a circle that passes through A.
+- An Android phone with Android 8.0 or newer.
+- BRouter (free, from [F-Droid](https://f-droid.org/packages/btools.routingapp/) or
+  [Google Play](https://play.google.com/store/apps/details?id=btools.routingapp)).
+  Open it once after installing and use its download manager to get the map squares covering the
+  area you ride in. Ellipse Ride can't plan anything outside those squares.
+- OsmAnd, if you want to navigate the ride. Any app that opens GPX files works too.
 
-## Requirements
+## Install
 
-- Android 8.0 or newer.
-- BRouter installed, opened once, with the segments for your area downloaded. The `trekking`,
-  `fastbike` and `safety` profiles ship with BRouter.
-- OsmAnd, if you want the one-tap hand-off.
-- A network connection for the map tiles (routing itself stays offline).
+Download the latest `ellipse-ride-vX.Y.Z.apk` from the
+[Releases page](https://github.com/groig/routing/releases/latest) and open it on your phone. Android
+will ask you to allow installing apps from your browser or file manager the first time.
 
-## Building
+To hear about new versions, add `https://github.com/groig/routing` to
+[Obtainium](https://github.com/ImranR98/Obtainium). It checks the Releases page and offers updates,
+which install over the old version and keep your saved places.
 
-```sh
-./gradlew testDebugUnitTest assembleRelease   # or assembleDebug
-```
+## Using it
 
-APKs land in `app/build/outputs/apk/<type>/`. Every push runs both builds on GitHub Actions and
-uploads them as the `ellipse-ride-release` and `ellipse-ride-debug` artifacts.
+1. Tap **A** to set your start. You can drag a map until the pin sits on the spot, use where you
+   are now, or pick one of your saved places. Typing coordinates works too.
+2. Do the same for **B**, your finish. Use the same place as A for a loop.
+3. Give a place a name when you set it and it is saved for next time.
+4. Set the distance with the slider or the + and - buttons, and pick a riding style. Trekking mixes
+   quiet roads and cycle paths and is a good default. Fast prefers smooth, direct roads, for road
+   bikes. Quiet avoids traffic as much as it can.
+5. Tap **Generate route**. It takes a few seconds to a minute, depending on the distance.
+6. Check the ride on the map, then tap **Open in OsmAnd** or **Share**. Tap **Try another route**
+   for a different one.
 
-The release build is minified with R8.
+You can also share a location to Ellipse Ride from OsmAnd or a maps app (as a `geo:` link) and set
+it as A or B.
 
-## Signing and releases
+## How it picks a route
 
-Android only installs an update over an existing app when both are signed with the same key and the
-new version code is higher. So releases are signed with one permanent key, and the version comes
-from the git tag.
+Ellipse Ride scatters a few random waypoints on an ellipse around A and B and asks BRouter for the
+best ride through them. If the ride comes out too long or too short, it shrinks or grows the ellipse
+and asks again until the distance is within 5% of what you wanted.
 
-### One-time setup: the release key
+Random waypoints can make odd rides, so it also tidies up after BRouter. Detours down a dead end and
+straight back out are cut. Rides that use the same road twice get tried again with new waypoints,
+and the one with the least repetition wins. The card under the map shows the distance, how far it
+is from your target, the climbing, and how much of the ride repeats roads.
 
-1. Create the key (`keytool` comes with any JDK, including Android Studio's):
+## Troubleshooting
 
-   ```sh
-   keytool -genkeypair -v -keystore ellipse-ride-release.jks -storetype PKCS12 \
-     -alias ellipse-ride -keyalg RSA -keysize 4096 -validity 36500
-   ```
+If the error mentions "position not mapped" or "datafile not found", BRouter doesn't have the map
+square for part of the area. Open BRouter's download manager and add the squares around A, B and
+the ride.
 
-   With PKCS12 the key has the same password as the keystore.
-2. Back up `ellipse-ride-release.jks` and its password somewhere safe, such as a password manager.
-   If you lose either, no future build can update installed copies; everyone has to uninstall first.
-   Never commit the file.
-3. In the repository on GitHub, open Settings > Secrets and variables > Actions and add:
-   - `RELEASE_KEYSTORE_BASE64`: the output of `base64 -w0 ellipse-ride-release.jks`
-     (on macOS: `base64 -i ellipse-ride-release.jks`)
-   - `RELEASE_KEYSTORE_PASSWORD`: the password
-   - `RELEASE_KEY_ALIAS`: `ellipse-ride`
-   - `RELEASE_KEY_PASSWORD`: the same password
+If it says "Profile ... does not exists", your BRouter install is missing that riding style. Pick
+another one, or reinstall BRouter.
 
-Builds from `build.yml` use the key too once the secrets exist. Without them they fall back to the
-debug key, which is fine for testing but not for sharing.
+If the ride always comes out much longer than you asked, the distance is shorter than the direct
+route between A and B. Move the points closer together or ask for a longer ride.
 
-### Publishing a version
+If there's no map under the route, the map needs an internet connection. The route itself is
+still fine and can be opened in OsmAnd.
 
-```sh
-git tag v0.2.0
-git push origin v0.2.0
-```
+## Privacy
 
-Or open the Actions tab, pick "Release", click "Run workflow" and enter the version (`0.2.0`); the
-tag is created for you. Either way, `release.yml` builds and tests that commit, signs the APK and publishes it as a GitHub release
-with notes generated from the commits. Anyone can download it from the repository's Releases page
-without a GitHub account. Each tag must be higher than the last (the version code is
-`major * 10000 + minor * 100 + patch`).
+Routing happens on your phone. The app has no accounts, ads or tracking. It uses the internet only
+to load map tiles from openstreetmap.org, which sees which area you're looking at, the same as any
+map app. Location access is optional and only used when you ask to use where you are.
 
-To get updates automatically, users can add the repository's URL to
-[Obtainium](https://github.com/ImranR98/Obtainium), which watches GitHub releases.
+## Building from source
+
+See [BUILDING.md](BUILDING.md).
